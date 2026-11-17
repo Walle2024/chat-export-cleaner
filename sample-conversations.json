@@ -1,0 +1,27 @@
+[
+  {
+    "title": "Debug flaky CI test",
+    "create_time": 1736900000,
+    "update_time": 1736903600,
+    "conversation_id": "aaa-111",
+    "current_node": "n4",
+    "mapping": {
+      "n1": { "id": "n1", "parent": null, "children": ["n2"], "message": { "id": "m1", "author": { "role": "system" }, "create_time": 1736900000, "content": { "content_type": "text", "parts": ["You are ChatGPT"] } } },
+      "n2": { "id": "n2", "parent": "n1", "children": ["n3"], "message": { "id": "m2", "author": { "role": "user" }, "create_time": 1736900010, "content": { "content_type": "text", "parts": ["My CI test passes locally but fails on the runner about 1 in 5 times. It calls `Date.now()` and asserts the formatted date. Any ideas?"] } } },
+      "n3": { "id": "n3", "parent": "n2", "children": ["n4"], "message": { "id": "m3", "author": { "role": "assistant" }, "create_time": 1736900020, "content": { "content_type": "text", "parts": ["Classic timezone flake. `Date.now()` is fine — the formatter is using the machine's local timezone, which differs between your laptop and the runner.\n\nFix it by pinning the timezone:\n\n```javascript\nconst fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' });\n```\n\nOr pass `timeZone: 'UTC'` into `toLocaleString`. Either way the assertion becomes deterministic.\n\n**Why 1 in 5?** The runner's TZ may vary per shard — you can verify with `console.log(Intl.DateTimeFormat().resolvedOptions().timeZone)`.\n\nRead more: [Intl docs](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl)"] } } },
+      "n4": { "id": "n4", "parent": "n3", "children": [], "message": { "id": "m4", "author": { "role": "user" }, "create_time": 1736900100, "content": { "content_type": "text", "parts": ["That was it — pinning UTC fixed it. Thanks!"] } } }
+    }
+  },
+  {
+    "title": "Sourdough starter plan",
+    "create_time": 1736600000,
+    "update_time": 1736601200,
+    "conversation_id": "bbb-222",
+    "current_node": "s3",
+    "mapping": {
+      "s1": { "id": "s1", "parent": null, "children": ["s2"], "message": { "id": "sm1", "author": { "role": "system" }, "create_time": 1736600000, "content": { "content_type": "text", "parts": ["You are ChatGPT"] } } },
+      "s2": { "id": "s2", "parent": "s1", "children": ["s3"], "message": { "id": "sm2", "author": { "role": "user" }, "create_time": 1736600010, "content": { "content_type": "text", "parts": ["Give me a 7-day plan to start a sourdough starter from scratch."] } } },
+      "s3": { "id": "s3", "parent": "s2", "children": [], "message": { "id": "sm3", "author": { "role": "assistant" }, "create_time": 1736600120, "content": { "content_type": "text", "parts": ["**Day 1:** Mix 60g whole-wheat flour + 60g water in a jar. Cover loosely, leave at room temp.\n\n**Day 2:** Rest — nothing to do.\n\n**Days 3–7:** Discard half, feed 60g flour + 60g water daily.\n\nIt's ready when it doubles within ~6 hours of feeding and smells pleasantly sour."] } } }
+    }
+  }
+]
