@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chat Export Cleaner — conversations.json, readable</title>
-<meta name="description" content="Turn your ChatGPT conversations.json export into clean, readable Markdown. 100% in your browser — your file never leaves your device.">
+<title>Chat Export Cleaner — ChatGPT &amp; DeepSeek exports, readable</title>
+<meta name="description" content="Turn your ChatGPT conversations.json or DeepSeek export into clean, readable Markdown. 100% in your browser — your file never leaves your device.">
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e7eaf0; --dim:#8b93a5; --accent:#4f8cff; --user:#2b3245; }
   * { box-sizing:border-box; }
@@ -48,18 +48,18 @@
 <body>
 <header>
   <h1>Chat Export Cleaner</h1>
-  <p>Drop your <code>conversations.json</code> (or the whole export .zip) — get clean, readable Markdown.</p>
+  <p>Drop your ChatGPT <code>conversations.json</code> or <strong>DeepSeek export .zip</strong> — get clean, readable Markdown.</p>
   <span class="privacy">🔒 100% in your browser — your file never leaves your device</span>
 </header>
 
 <main>
   <div id="drop">
     <strong>Drag &amp; drop</strong> your export here, or click to choose a file<br>
-    <span style="font-size:13px">accepts conversations.json, any export .json, or the full .zip</span>
+    <span style="font-size:13px">accepts ChatGPT conversations.json, DeepSeek chat_sessions, or the full export .zip</span>
     <input type="file" id="file" accept=".json,.zip,application/json,application/zip">
   </div>
   <details class="paste"><summary>…or paste JSON text instead</summary>
-    <textarea id="pastebox" placeholder='Paste the contents of conversations.json (or a single conversation object) here'></textarea>
+    <textarea id="pastebox" placeholder='Paste conversations.json, a DeepSeek chat session, or a single conversation here'></textarea>
     <button id="pastebtn" style="margin-top:8px">Parse pasted JSON</button>
   </details>
   <div id="status"></div>
@@ -79,7 +79,7 @@
   </div>
 </main>
 
-<footer>Works entirely offline after load · export via ChatGPT → Settings → Data controls → Export data</footer>
+<footer>Works entirely offline after load · ChatGPT: Settings → Data controls → Export data · DeepSeek: Settings → Export data</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script>
@@ -118,34 +118,74 @@
     return out.reverse(); // walk goes newest→root; reverse to chronological
   }
 
-  function normalize(data) {
-    var arr = Array.isArray(data) ? data
-      : (data && data.conversations ? data.conversations
-      : (data && data.mapping ? [data] : null));
-    if (!arr) throw new Error("Couldn't find conversations. Expected conversations.json (an array), a single conversation object, or an export .zip.");
-    return arr.filter(function (c) { return c && c.mapping; }).map(function (c, i) {
-      var msgs = extractMessages(c);
-      var t = c.create_time || 0;
-      return {
-        title: (c.title || "Untitled").trim() || "Untitled",
+  function isDeepSeek(d) {
+    return d && Array.isArray(d.messages) && d.messages.some(function (m) { return m && Array.isArray(m.fragments); });
+  }
+
+  function extractDeepSeek(s) {
+    var byId = {}, out = [];
+    s.messages.forEach(function (m) { if (m && m.id != null) byId[m.id] = m; });
+    var id = s.current_message_id != null ? s.current_message_id
+      : (s.messages.length ? s.messages[s.messages.length - 1].id : null);
+    var guard = 0;
+    while (id != null && byId[id] && guard++ < 100000) {
+      var m = byId[id], text = "";
+      (m.fragments || []).forEach(function (f) {
+        if ((f.type === "REQUEST" || f.type === "RESPONSE") && typeof f.content === "string") {
+          text += (text ? "\n" : "") + f.content;
+        } else if (f.type === "FILE") {
+          var names = (f.files || []).map(function (x) { return x.file_name; }).filter(Boolean);
+          if (names.length) text += (text ? "\n" : "") + "[Attached: " + names.join(", ") + "]";
+        }
+      });
+      text = text.trim();
+      if (text) out.push({ role: m.role === "USER" ? "user" : "assistant", text: text });
+      id = m.parent_id;
+    }
+    return out.reverse();
+  }
+
+  function convosFromData(data) {
+    var arr = [];
+    if (Array.isArray(data)) {
+      data.forEach(function (d) { arr = arr.concat(convosFromData(d)); });
+      return arr;
+    }
+    if (!data) return arr;
+    if (isDeepSeek(data)) {
+      var dm = extractDeepSeek(data);
+      if (dm.length) arr.push({
+        title: (data.title || "Untitled").trim() || "Untitled",
+        date: data.inserted_at ? new Date(data.inserted_at) : null,
+        n: dm.length, msgs: dm, key: data.id || ("d" + Math.random())
+      });
+      return arr;
+    }
+    if (data.conversations) return convosFromData(data.conversations);
+    if (data.mapping) {
+      var msgs = extractMessages(data), t = data.create_time || 0;
+      if (msgs.length) arr.push({
+        title: (data.title || "Untitled").trim() || "Untitled",
         date: t ? new Date(t * 1000) : null,
-        n: msgs.length,
-        msgs: msgs,
-        key: (c.conversation_id || "c" + i)
-      };
-    }).filter(function (c) { return c.n > 0; })
-     .sort(function (a, b) { return (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0); });
+        n: msgs.length, msgs: msgs, key: data.conversation_id || ("c" + Math.random())
+      });
+    }
+    return arr;
+  }
+
+  function loadConvos(arr) {
+    if (!arr.length) throw new Error("Couldn't find conversations. Expected a ChatGPT conversations.json, a DeepSeek chat session, or an export .zip.");
+    convos = arr.sort(function (a, b) { return (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0); });
+    render();
+    setStatus("✓ Loaded " + convos.length + " conversation" + (convos.length === 1 ? "" : "s") + " (" +
+      convos.reduce(function (s, c) { return s + c.n; }, 0) + " messages). Everything stayed on this device.");
   }
 
   function parseText(raw) {
     var data;
     try { data = JSON.parse(raw); }
-    catch (e) { throw new Error("That file isn't valid JSON. Make sure you picked conversations.json from inside your export (not chat.html)."); }
-    convos = normalize(data);
-    if (!convos.length) throw new Error("Parsed the JSON but found no messages to show.");
-    render();
-    setStatus("✓ Loaded " + convos.length + " conversation" + (convos.length === 1 ? "" : "s") + " (" +
-      convos.reduce(function (s, c) { return s + c.n; }, 0) + " messages). Everything stayed on this device.");
+    catch (e) { throw new Error("That file isn't valid JSON. Pick a .json file from inside your export, not chat.html."); }
+    loadConvos(convosFromData(data));
   }
 
   /* ---------- file input ---------- */
@@ -155,12 +195,16 @@
     if (/\.zip$/i.test(file.name)) {
       if (typeof JSZip === "undefined") { setStatus("ZIP support failed to load (offline?). Unzip your export and drop conversations.json instead.", true); return; }
       JSZip.loadAsync(file).then(function (zip) {
-        var names = Object.keys(zip.files).filter(function (n) {
-          return /conversations\.json$/i.test(n) || (/\.json$/i.test(n) && !/user\.json|model_comparisons|shared\.json/i.test(n));
-        });
-        if (!names.length) throw new Error("No conversations.json found in that zip.");
-        var pick = names.find(function (n) { return /conversations\.json$/i.test(n); }) || names[0];
-        return zip.file(pick).async("string").then(function (txt) { parseText(txt); });
+        var names = Object.keys(zip.files).filter(function (n) { return /\.json$/i.test(n) && !zip.files[n].dir; });
+        if (!names.length) throw new Error("No JSON files found inside that zip.");
+        var found = [];
+        return Promise.all(names.map(function (n) {
+          return zip.file(n).async("string").then(function (txt) {
+            var data;
+            try { data = JSON.parse(txt); } catch (e) { return; }
+            found = found.concat(convosFromData(data));
+          }).catch(function () {});
+        })).then(function () { loadConvos(found); });
       }).catch(function (e) { setStatus(e.message, true); });
     } else {
       var r = new FileReader();
