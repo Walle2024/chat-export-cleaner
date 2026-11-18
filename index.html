@@ -139,7 +139,7 @@
         }
       });
       text = text.trim();
-      if (text) out.push({ role: m.role === "USER" ? "user" : "assistant", text: text });
+      if (text) out.push({ role: m.role === "USER" ? "user" : "assistant", text: text, who: m.role === "USER" ? "You" : "DeepSeek" });
       id = m.parent_id;
     }
     return out.reverse();
@@ -240,7 +240,7 @@
     var lines = ["# " + c.title, ""];
     if (c.date) lines.push("*" + c.date.toISOString().slice(0, 16).replace("T", " ") + " UTC*", "");
     c.msgs.forEach(function (m) {
-      lines.push("## " + (ROLE_LABEL[m.role] || m.role), "");
+      lines.push("## " + (m.who || ROLE_LABEL[m.role] || m.role), "");
       lines.push(m.text, "");
     });
     return lines.join("\n");
@@ -304,7 +304,7 @@
     var div = document.createElement("div");
     div.className = "msg " + m.role;
     var who = document.createElement("div"); who.className = "who";
-    who.textContent = ROLE_LABEL[m.role] || m.role;
+    who.textContent = m.who || ROLE_LABEL[m.role] || m.role;
     div.appendChild(who);
     var paras = m.text.split(/\n{2,}/);
     paras.forEach(function (p) {
